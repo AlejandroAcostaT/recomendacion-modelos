@@ -1,7 +1,18 @@
-## Tarea #4: Sistema de recomendaci贸n y evaluaci贸n de modelos
+## Tarea #4: Sistema de recomendaci髇 y evaluaci髇 de modelos
 
-### Paper ROC 
-Una introducci贸n al an谩lisis de curvas ROC. Tomar en cuenta solamente las primeras 5 secciones.
+### Documentos Presentes: 
+Sistemas de Recomendacion.Rmd, Archivo .Rmd ejecutable, con el an醠isis del c骴igo y pruebas del mismo.
+SR-Codigo.R, Archivo .R ejecutable, Con el c骴igo y las funciones del .Rmd.
+periodico.csv, archivo .csv, esta es la entrada utilizada en el .Rmd y .R.
+Tarea_4.pdf, Archivo pdf con los requerimientos a realizar.
+ROCintro.pdf, Archivo pdf, paper sobre curvas ROC y como crearlas.
 
-### Archivos csv
-Referentes a la primer parte de la tarea sobre el sistema de recomendaci贸n.
+### Dispositivo usado para correr los programas:
+Laptop ASUS, procesador intel i7, RAM: 8GB.
+
+### Paquetes R usados:
+Se encuentran en los archivos .Rmd y .R. Se deber韆n instalar por si mismos al ejecutar los archivos.
+Cualquier otro paquete faltante usar:
+
+install.packages([Nombre del paquete])
+

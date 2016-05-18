@@ -1,0 +1,291 @@
+---
+title: "Sistemas de Recomendación"
+author: "Alejandro Acosta"
+date: "18 de mayo del 2016"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+if(!require("arules")){
+  install.packages("arules")
+}
+if(!require("arulesViz")){
+  install.packages("arulesViz")
+}
+
+library("arules")
+library("arulesViz")
+
+set.seed(123)
+```
+
+# Parte I - Sistemas de recomendación:
+En este documento se realizará un sistema de recomendación de artículos para un periódico dado un datasets de datos con transacciones de distintos usuarios. Se verificará además cuáles de estos usuarios son bots, y serán eliminados de las transacciones. Se responderán las dudas del cliente sobre las visitas con mayor y menor tiempo de estadía (esta última sin contar transacciones hechas por bots), las 10 transacciones que más se repiten en el dataset.
+
+## Lectura y preprocesamiento de la entrada:
+
+```{r entrada, include=FALSE}
+#Lectura de la etrada
+periodico = read.csv("periodico.csv", stringsAsFactors = FALSE)
+
+items = periodico$articles
+
+#Se crean dos listas para el preprocesamiento de la data
+
+temas = c("deportes", "politica", "variedades", "internacional",
+          "nacionales", "sucesos", "comunidad", "negocios", "opinion")
+
+articulos = c("articulo1", "articulo2", "articulo3", "articulo4",
+             "articulo5", "articulo6", "articulo7", "articulo8",
+             "articulo9")
+
+```
+
+```{r preprocesamiento}
+##Preprocesamiento de los datos
+#Ciclo para preprocesar la data
+arts = c()
+
+for (item in items) {
+  #Obtener solo caracteres alfanumericos
+  x = gsub('[^[:alnum:] ]','' ,toString(item))
+  #Obtener los numeros de los items
+  x = (as.numeric(unlist(unlist(strsplit(x, "[^0-9]+")))))
+  #Obtener temas/articulos
+  art = paste(toString(temas[((x[2]-1)/9)+1]),
+              toString(articulos[((x[2]-1)%%9)+1])
+              , sep="/")
+  if(length(x)>2){
+    for(i in (3:length(x))){
+      art = paste(art, 
+                  paste(toString(temas[((x[i]-1)/9)+1]),
+                        toString(articulos[((x[i]-1)%%9)+1])
+                        , sep="/"),
+                  sep=",")
+    }
+  }
+  #Crear vector con transacciones
+  arts = c(arts, art)
+}
+```
+
+## Encontrar y eliminar Bots de la entrada:
+
+El primer paso antes de analizar la data es eliminar aquellas transacciones hechas por bots. Según el cliente si una transaccion dura a lo sumo 20 segundos la transacción es considerada como un bot. El siguiente código se encarga de identificar y eliminar este tipo de transacciones.
+
+```{r bots}
+#Obtener cantidad de elementos de articulos
+l = length(periodico[,1])
+
+bots = c()
+times = c()
+index = c()
+#Obtener el tiempo de una transaccion
+#Verificar que sean mas de 20 segundos
+#Obtener el indice de cuando es un bot
+#Obtener el tiempo y los indices cuando no lo es
+for(i in (1:l)){
+  secs = difftime(periodico$exit[i],periodico$entry[i], units = "secs")
+  if(secs <= 20){
+    bots = c(bots, i)
+  }else{
+    times = c(times, secs)
+    index = c(index, i)
+  }
+}
+
+#Eliminar los bots de la entrada
+arts=arts[-bots]
+
+# Crear archivo con las transacciones
+write(arts, file="transacciones")
+```
+
+El número de bots de esta entrada es:
+
+```{r numeroBots}
+#Imprimir la cantidad de bots
+length(bots)
+```
+
+## Recomendacion de artículos:
+A continuación se presenta una función capaz de recomendar un artículo nuevo a un usuario dependiendo de los artículos vistos previamente.
+
+```{r recomendacion}
+##Usando arules para las transacciones
+#Leer como transacciones
+transacciones = read.transactions("transacciones", format="basket", sep=",")
+unlink("transacciones")
+
+#Obtener las reglas
+rules <- apriori(transacciones, parameter = list(supp = 0.000022, conf = 0.85, maxlen=5))
+
+#Funcion de recomendacion de un articulo
+#rules son las reglas
+#trans son los articulos leidos
+recomendacion = function(rules, trans){
+  articulo = sort(subset(rules, subset = lhs %in% trans),decreasing=TRUE,by="confidence")
+  articulo = inspect(unique(articulo@rhs))
+  l=c()
+  for(i in (1:length(articulo[,1]))){
+    l=c(l,gsub('[^[:alnum:]/]','' ,toString(articulo[i,])))
+  }
+  #Se verifica que los articulos de la lista no sea alguno que este en la entrada.
+  l=l[!l %in% trans]
+  
+  return (l[1])
+}
+
+#Prueba de la funcion
+#siempre dejar rules
+#respetar formato de entrada de los articulos (solo las palabras sin los '{}')
+rec = recomendacion(rules, c("nacionales/articulo6", "deportes/articulo4", "deportes/articulo1"))
+```
+La salida anterior es el resultado de la función *inspect* donde se ven algunos de los artículos que el sistema recomienda.  
+
+La siguiente línea muestra el artículo recomendado. Como se puede observar el artículo *deportes/articulo1*, fue eliminado de la lista de recomendaciones pues este ya fue visto por el usuario.
+```{r answer}
+rec
+```
+
+
+## Visitas con menor tiempo de estadía:
+El siguiente código utiliza los tiempos de las transacciones para ver cuales son las transacciones con menor tiempo de estadía.
+
+```{r minusTime}
+##Top 10 de tiempos
+#Se crea un dataframe con los tiempos y el indice de todas las transacciones
+pair = data.frame(times, index)
+
+#Visitas con menor tiempo de estadia
+#se ordenan las transacciones por tiempo
+menor = pair[order(pair$times),]
+#se obtienen los 10 primeros indices
+id = menor$index[1:10]
+#se obtienen los 10 primeros tiempos
+segundos = menor$times[1:10]
+
+#Se obtienen las transacciones de los indices obtenidos
+transaccion = arts[id[1:10]]
+#Se crea un dataframe
+menorTiempo = data.frame(id, transaccion, segundos)
+#impresion
+menorTiempo
+```
+
+## Visitas con mayor tiempo de estadía:
+Y este código verifica cuales son las transacciones con el mayor tiempo.
+
+```{r mayorTime}
+#Visitas con mayor tiempo de estadia
+
+#se ordenan las transacciones por tiempo
+mayor = pair[rev(order(pair$times)),]
+#se obtienen los 10 primeros indices
+id = mayor$index[1:10]
+#se obtienen los 10 primeros tiempos
+segundos = mayor$times[1:10]
+
+#Se obtienen las transacciones de los indices obtenidos
+transaccion = arts[id[1:10]]
+#Se crea un dataframe
+mayorTiempo = data.frame(id, transaccion, segundos)
+#impresion
+mayorTiempo
+```
+
+## Top 10 Transacciones:
+Este código se encarga de obtener los las 10 transacciones más comunes del set de datos.
+Estos son:
+
+```{r topTen}
+#Se usa table para hacer un conteo de los distintos tipos de transacciones
+#Y se ordena
+top10 = sort(table(arts), decreasing = T)[1:10]
+# Se ingresa el resultado a un dataset
+top10 = data.frame(top10)
+#Impresion
+top10
+```
+
+#Parte II - Curvas ROC
+En esta segunda parte Se creará un función para generar una curva ROC dada una entrada compuesta de las siguientes variables:
+
+- scores: son los scores de cada una de las instancias.
+- real: son las verdaderas clases de las instancias.
+- target: es la clase que se considera positiva.
+
+La función generate_ROC toma esta entrada y produce una gráfica donde muestra la curva.
+
+```{r ROC}
+generate_ROC = function(scores, real, target){
+  # Generar curva
+  #Se ordenan las clases segun los scores
+  real = real[order(scores, decreasing = T)]
+  #Se ordenan los scores
+  scores = sort(scores, decreasing = T)
+  #Se usa table para conocer el numero de veces que la clase target está en real
+  t = table(real)
+  #Se obtienen la cantidad de instancias
+  l = length(real)
+  #Numero de instancias Positivas
+  P = t[[target]]
+  #Numero de instancias Negativas
+  N = l - P
+  #Contador de Falsas Positivas
+  FP = 0
+  #Contador de Verdaderas Positivas
+  TP = 0
+  #Lista de coordenadas x
+  Rx = c()
+  #Lista de coordenadas y
+  Ry = c()
+  #Inicializacion de score previo a -Inf
+  fPrev = -Inf
+  #contadores
+  i = 1
+  j = 1
+  #lista de labels para impresion de la curva
+  labs = c()
+  
+  while(i<=length(real)){
+    #Se verifica que el nuevo score no sea igual al anterior
+    if(scores[i] != fPrev){
+     #Se agregan los puntos x,y
+     Rx[j] <- FP/N
+     Ry[j] <- TP/P
+     #Se añade el label
+     labs[j] = fPrev
+     #Se actualiza fPrev
+     fPrev = scores[i]
+     j = j + 1
+    }
+    if(real[i]==target){
+      #Si la clase actual es igual a la clase target se suma 1 a TP
+      TP = TP + 1
+    }else{
+      #De lo contrario se suma 1 a FP
+      FP = FP + 1
+    }
+    i = i + 1
+  }
+  
+  #punto (1,1)
+  Rx[j] <- FP/N
+  Ry[j] <- TP/P
+  labs[j] = 1.0
+  
+  #Impresion de la curva
+  plot(Rx, Ry, main = "ROC Curve", xlim = c(-0.005, 1.005), ylim = c(-0.05, 1.05), xlab = "FP-RATE", ylab = "TP-Rate", pch=16, col="red")
+  lines(Rx, Ry, lty=5)
+  lines(c(-2,2),c(-2,2), lty=5, col=16)
+  text(Rx+0.025, Ry+0.025, labels = labs)
+}
+
+#Entrada de ejemplo
+real = c(2, 2, 1, 2, 2, 2, 2, 1, 2, 1, 2, 1, 2, 1, 1, 1, 2, 1, 1, 1)
+scores = c(0.9, 0.8, 0.7, 0.6, 0.55, 0.54, 0.53, 0.52, 0.5, 0.5, 0.5, 0.5, 0.38, 0.37, 0.36, 0.35, 0.34, 0.33, 0.30, 0.1)
+target = 2
+#Llamada a la funcion
+generate_ROC(scores, real, target)
+```
